@@ -13,12 +13,15 @@ var tunnelEP *string
 var remoteEP *string
 var bufferSize *int
 var useTLS *bool
+var skipVerification *bool
 
 func main() {
 	tunnelEP = flag.String("tunnelEP", "localhost:23", "Local listening port")
 	remoteEP = flag.String("remoteEP", "", "Remote endpoint (ip:port)")
 	bufferSize = flag.Int("buf", 4096, "Read/Write bufferSize")
 	useTLS = flag.Bool("useTLS", false, "Use TLS for remote connection")
+	skipVerification = flag.Bool("skipVerification", false, "Skip certificate verification. Only applicable if useTLS is specified")
+
 	flag.Parse()
 
 	if *remoteEP == "" {
@@ -34,6 +37,8 @@ func start() {
 	log.Printf("Start TCP-TLS Proxy listening at : %s", *tunnelEP)
 	if *useTLS == false {
 		log.Println("WARNING: Using non-secure connection to remote end point, specify -useTLS to secure remote connection.")
+	} else if *skipVerification {
+		log.Println("WARNING: Not verifying server certificates risks man in the middle attacks.")
 	}
 
 	ln, err := net.Listen("tcp", *tunnelEP)
@@ -59,7 +64,11 @@ func handleClient(client net.Conn) {
 	var err error
 
 	if *useTLS {
-		server, err = tls.Dial("tcp", *remoteEP, nil)
+		var tlscfg *tls.Config
+		if *skipVerification {
+			tlscfg = &tls.Config{InsecureSkipVerify: true}
+		}
+		server, err = tls.Dial("tcp", *remoteEP, tlscfg)
 	} else {
 		server, err = net.Dial("tcp", *remoteEP)
 	}
