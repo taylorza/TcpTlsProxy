@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 )
 
 var tunnelEP *string
@@ -81,15 +82,20 @@ func handleClient(client net.Conn) {
 
 	log.Printf("Tunnel established from %s to %s", client.RemoteAddr().String(), *remoteEP)
 
-	done := make(chan bool)
+	var wg sync.WaitGroup
 
-	go clientToServer(client, server, done)
-	go serverToClient(client, server, done)
-	<-done
+	wg.Add(2)
+	go clientToServer(client, server, &wg)
+	go serverToClient(client, server, &wg)
+	wg.Wait()
 }
 
-func clientToServer(client net.Conn, server net.Conn, done chan bool) {
-	defer func() { done <- true }()
+func clientToServer(client net.Conn, server net.Conn, wg *sync.WaitGroup) {
+	defer func() {
+		client.Close()
+		server.Close()
+		wg.Done()
+	}()
 
 	buf := make([]byte, *bufferSize)
 	for {
@@ -107,8 +113,12 @@ func clientToServer(client net.Conn, server net.Conn, done chan bool) {
 	}
 }
 
-func serverToClient(client net.Conn, server net.Conn, done chan bool) {
-	defer func() { done <- true }()
+func serverToClient(client net.Conn, server net.Conn, wg *sync.WaitGroup) {
+	defer func() {
+		client.Close()
+		server.Close()
+		wg.Done()
+	}()
 
 	buf := make([]byte, *bufferSize)
 	for {
